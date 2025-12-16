@@ -1,36 +1,35 @@
-apiVersion: automation.cloudbees.io/v1alpha1
+name: jfrog-artifactory-upload-file
 kind: workflow
-name: My workflow
+apiVersion: automation.cloudbees.io/v1alpha1
+
 on:
   push:
     branches:
-      - "**"
-  workflow_dispatch:
-permissions:
-  scm-token-own: read
-  scm-token-org: read
-  id-token: write
+      - **
 jobs:
-  build:
+  upload-file-job:
     steps:
-      - name: Get source code
+      - name: checkout-source-code
         uses: cloudbees-io/checkout@v1
-      - name: Setup git credentials
-        uses: cloudbees-io/configure-git-global-credentials@v1
-      - name: Login to AWS
-        uses: cloudbees-io/configure-aws-credentials@v1
-        id: aws-login
+
+      - name: Configure JFrog OCI credentials
+        uses: cloudbees-io/configure-oci-credentials@v1
         with:
-          aws-region: us-east-1
-          role-to-assume: ${{ vars.oidc_staging_iam_role }}
-          role-duration-seconds: "3600"
-      - name: Configure container registry for AWS ECR
-        uses: cloudbees-io/configure-ecr-credentials@v1
+          registry: cbjfrog.saas-preprod.beescloud.com
+          username: admin
+          password: ${{ secrets.JFROG_TOKEN }}
+
       - id: build-container
-        name: Build container image
+        name: Build and push container image to JFrog
         uses: cloudbees-io/kaniko@v1
-        kind: build
         with:
-          destination: 020229604682.dkr.ecr.us-east-1.amazonaws.com/throwaway/actions/vulnerable-image:Tag1
-          tar-path: container-image.tar
-          build-args: USER=cbp,TOKEN=${{ secrets.GH_SECURITY_PAT }}
+          destination: cbjfrog.saas-preprod.beescloud.com/jfrog-test-docker-target-repo/test-image:1.11
+          build-args: USER=cbp-dev,TOKEN=${{ secrets.GH_SECURITY_PAT }}
+          context: ${{ cloudbees.workspace }}
+          dockerfile: Dockerfile
+     
+      - name: Print output parameter artifact ID from JFrog upload action
+        uses: docker://alpine:latest
+        shell: sh
+        run: |
+           echo "artifact ID for my-artifact is: ${{ steps.build-container.outputs.artifact-id }}"
